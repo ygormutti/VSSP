@@ -1,0 +1,3 @@
+VSSP - Very Simple Streaming Protocol
+
+O VSSP é um protocolo de transporte orientado a conexão que faz tudo que o UDP faz e ainda oferece entrega em ordem e descoberta de PMTU com baixo overhead.

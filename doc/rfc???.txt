@@ -1,0 +1,305 @@
+
+
+RFC ???                                                         Y. Mutti
+                                                                DCC-UFBA
+                                                        18 November 2011
+
+
+
+                     Very Simple Streaming Protocol
+                     ------------------------------
+
+1. Introdução
+-------------
+
+O Very Simple Streaming Protocol (VSSP) é definido aqui com o objetivo
+de disponibilizar um mecanismo rápido e de simples implementação para
+transmitir sequências de bytes (fluxos) entre pares de aplicativos
+executando em computadores capazes de se comunicar através de redes que
+utilizam o protocolo IP (versão 4 ou 6).
+
+Este protocolo realiza um esforço mínimo para garantir que dados
+recebidos em tempo hábil serão entregues em ordem para o aplicativo que
+os requisitou e maximizar o volume de dados recebidos em tempo hábil.
+Além de não garantir que todos os dados serão entregues, ele nem mesmo
+garante que todos os dados recebidos serão entregues.
+
+O VSSP é orientado para conexão. Em cada conexão há um transmissor e um
+receptor e só é possível enviar dados em um sentido (do transmissor para
+o receptor). Apenas segmentos de controle são enviados pelo receptor.
+
+O diferencial deste protocolo é que ele busca maximizar a relação
+
+                     comprimento do campo de dados
+             R = -------------------------------------
+                 comprimento do cabeçalho do datagrama
+
+por datagrama, consumindo menos largura de banda para transmitir a mesma
+quantidade de dados do que protocolos amplamente usados em aplicações de
+streaming com tolerância a perdas (como SCTP e TCP). Implementações
+ótimas do VSSP possuem o valor de R idêntico ao do protocolo UDP.
+
+2. Cabeçalhos
+-------------
+
+O VSSP possui dois formatos de cabeçalho - A e B.
+
+2.1 Formato A
+-------------
+
+Todas as implementações do protocolo DEVEM ser capazes de entender o
+formato A. Usando este formato, o VSSP é um protocolo que atua entre a
+camada de transporte (sobre o protocolo UDP) e a camada de aplicação.
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ ---
+   |          Source Port          |       Destination Port        |  U
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+  D
+   |            Length             |           Checksum            |  P
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ ---
+   | T |      Sequence Number      |                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
+   |                          data / options                       |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                        Datagrama VSSP Formato A
+
+Os campos Source/Destination Port e Checksum fazem parte do cabeçalho do
+protocolo UDP, portanto estão inclusos nos segmentos dos cabeçalhos VSSP
+de formato A de maneira implícita. O campo "Length" é ignorado.
+
+2.2 Formato B
+-------------
+
+O formato B é idêntico ao cabeçalho do protocolo UDP, exceto pelo campo
+Length, cujos 16 bits são utilizados de forma diferente:
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |          Source Port          |       Destination Port        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | T |      Sequence Number      |           Checksum            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                          data / options                       |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+                        Datagrama VSSP Formato B
+
+O campo Length do UDP é redundante, portanto a sua substituição não traz
+nenhum prejuízo, uma vez que todo cabeçalho IP possui um campo indicando
+comprimento. Isto torna o formato B compatível com o UDP, de forma que o
+mesmo número de protocolo do UDP (17) PODE ser informado no cabeçalho IP
+para assegurar a compatibilidade.
+
+2.3 Campos
+----------
+
+O campo denominado "T" (de tipo) é de preenchimento obrigatório e
+representa o tipo do segmento VSSP. A forma de usar cada tipo de pacote
+será apresentada na seção 4 deste documento.
+
+ +----+------+--------------------------------------------------------+
+ |BITS| TIPO | DESCRIÇÃO                                              |
+ +----+------+--------------------------------------------------------+
+ | 00 | REQ  | requisição de conexão ou de dados                      |
+ +----+------+--------------------------------------------------------+
+ | 01 | END  | encerramento de conexão ou de envio de dados           |
+ +----+------+--------------------------------------------------------+
+ | 10 | ETC  | dados para configuração e manutenção da conexão        |
+ +----+------+--------------------------------------------------------+
+ | 11 | DAT  | dados para serem entregues a aplicação                 |
+ +----+------+--------------------------------------------------------+
+
+                        Tipos de segmentos VSSP
+
+O campo "Sequence Number" é utilizado na ordenação de segmentos do tipo
+DAT. Nos outros tipos de pacotes este campo é utilizado para indicar o
+subtipo do pacote. Daqui em diante, a seguinte notação será utilizada
+para identificar os pacotes:
+
+                      <PACOTE> := <TIPO>_<SUBTIPO>
+
+Ao final deste documento é apresentada uma tabela completa com todos os
+tipos de pacotes do protocolo.
+
+Todos os cabeçalhos VSSP incluem, de forma implícita ou explícita, os
+campos "Source Port", "Destination Port" e "Checksum", com tamanho e
+obrigatoriedade similares aos campos homônimos do protocolo UDP, sendo a
+única diferença o campo Source Port, que no VSSP é obrigatório.
+
+Source Port e Destination Port são usados para identificar a aplicação
+que está enviando e a que receberá os segmentos, nesta ordem. Juntos com
+os endereços IP(v4/v6) de origem e destino estes campos identificam uma
+conexão VSSP de forma unívoca.
+
+O campo Checksum é idêntico ao do cabeçalho do UDP. Ao usar cabeçalho de
+formato B o Checksum DEVE ser calculado considerando o 5º e o 6º byte,
+nesta ordem, como o valor do campo Length. O destinatário PODE entregar
+dados vindos em segmentos com Checksum incorreto. Caso opte por entregar
+ele DEVE entregá-los sempre e DEVE informar a aplicação sobre a
+possibilidade de haver dados corrompidos no segmento.
+
+O campo "Data / options", em segmentos DAT, contém os dados do fluxo e é
+utilizado para passagem de parâmetros nos outros tipos de pacote.
+
+3. Interface de usuário
+-----------------------
+
+O transmissor e o receptor possuem interfaces de usuário diferentes. A
+interface de usuário do receptor DEVE permitir:
+
+ - abrir conexões, especificando endereço IP e número de porta do
+   transmissor
+ - solicitar um fluxo através de sua URL
+ - ler os dados recebidos em tempo hábil
+   - obter informações sobre corretude dos Checksums (se segmentos com
+     Cheksum errado não forem descartados) dos dados lidos
+   - obter informações sobre segmentos perdidos nos dados lidos
+ - cancelar o recebimento do fluxo atual
+ - encerrar conexões abertas
+
+A interface do transmissor DEVE permitir:
+
+ - aceitar pedidos de conexão em uma porta
+ - enviar streams solicitados em conexões estabelecidas
+ - obter endereço IP e porta de destino do receptor
+
+4. Funcionamento
+----------------
+
+Para poder receber um stream o receptor DEVE possuir uma conexão aberta
+com a fonte do stream (o transmissor) e solicitar o stream através do
+URL*. Após a solicitação, caso o transmissor consiga localizar o recurso
+desejado, os bytes começam a ser enviados e entregues a aplicação que os
+solicitou. Após o envio do último byte do stream a conexão permanece
+aberta e novos recursos podem ser requisitados. A conexão DEVE ser
+encerrada pelo receptor quando não for mais necessária. A conexão PODE
+ser encerrada pelo transmissor após um longo período de inatividade.
+
+*O URL deve ser codificado em UTF-8.
+
+Não há controle de fluxo como no TCP. O transmissor sempre assume que há
+espaço suficiente no receptor para armazenar todos os dados enviados
+enquanto eles não forem lidos pela aplicação.
+
+4.1 Estabelecimento de conexão
+------------------------------
+
+A abertura de conexão DEVE ser feita da seguinte forma: o receptor envia
+um pacote do tipo REQ_OPEN_X e aguarda que o transmissor lhe envie um
+pacote REQ_OK. Caso não obtenha resposta o receptor PODE tentar de novo,
+usando o estouro de um temporizador para indicar quando enviar o pacote.
+Caso obtenha resposta a conexão foi estabelecida.
+
+*X é o formato do cabeçalho que o receptor deseja usar. Se ele suportar
+o formato B deve tentar abrir a conexão com um pacote REQ_OPEN_B. Se o
+transmissor não suportar este formato deve responder com um REQ_DENIED.
+Nesse caso, o receptor deve tentar abrir a conexão com um pacote do tipo
+REQ_OPEN_A.
+
+Caso o transmissor receba um pacote REQ_OPEN_X para uma conexão aberta
+DEVE enviar o pacote REQ_OK novamente. Caso o receptor receba um pacote
+REQ_OK para uma conexão já aberta ele deve descartá-lo.
+
+Com a conexão aberta o próximo passo é executar o algoritmo de...
+
+4.2 Descoberta de PMTU (PMTUD)
+------------------------------
+
+A descoberta de PMTU serve para evitar a fragmentação de datagramas IPv4
+e para determinar o tamanho máximo de segmento (MSS). Após estabelecida
+a conexão, o transmissor deve enviar pacotes do tipo ETC_PMTU_PROBE com
+com a flag DF (Don't Fragment) do IPv4 habilitada, caso a conexão tenha
+sido criada através de uma rede IPv4. O campo de dados do pacote deve
+ser preenchido com zeros de forma que o datagrama IP tenha o comprimento
+que se deseja testar se é possível transmitir.
+
+Para cada pacote ETC_PMTU_PROBE recebido o receptor DEVE responder com
+um pacote ETC_PMTU_ACK, cujos dois primeiros octetos do campo de dados
+contém o comprimento dos DADOS recebidos. Detalhes mais específicos
+sobre o algoritmo PMTUD ficam a cargo da implementação. O MSS adotado na
+conexão DEVE ser igual ao comprimento do maior datagrama que chegou ao
+receptor (de que o transmissor tem conhecimento) menos o comprimento dos
+cabeçalhos IP, VSSP e UDP (caso a conexão use o formato B).
+
+Após descobrir o PMTU o transmissor DEVE enviar um pacote ETC_PMTU_ACK,
+cujos dois primeiros bytes contém o MSS que será utilizado, e o receptor
+deve confirmar que recebeu enviando o mesmo pacote de volta para o
+transmissor.
+
+Apenas os pacotes ETC_PMTU_PROBE DEVEM ser enviados com o flag DF (IPv4)
+habilitado. Todos os demais tipos de pacote do VSSP são enviados com o
+flag DF desabilitado.
+
+4.3 Requisitando um stream
+--------------------------
+
+Para solicitar um stream o receptor DEVE enviar um pacote REQ_STREAM,
+com o campo de dados preenchido com o URL do stream. Caso o transmissor
+não possa enviar o fluxo de dados por qualquer motivo DEVE enviar um
+pacote do tipo REQ_DENIED. Senão o transmissor deve enviar os dados do
+fluxo solicitado, em pacotes do tipo DAT com número de sequência inicial
+0 e incrementado de um em um a cada segmento enviado. O comprimento dos
+dados enviados em cada pacote NÃO PODE exceder o MSS.
+
+Os dados dos segmentos recebidos DEVEM ser entregues à aplicação quando
+ela solicitar, exceto no caso de os segmentos chegarem fora de ordem no
+receptor. Nesse caso o receptor DEVE entregar apenas os dados contíguos.
+A cada vez que for detectada uma descontiguidade no fluxo de segmentos o
+receptor DEVE iniciar um temporizador para esperar cada segmento que
+está faltando, e só entregar os dados após o estouro dos temporizadores
+de todos os pacotes faltantes, avisando a aplicação que um fragmento do
+fluxo foi perdido.
+
+Por exemplo, assuma que o MSS é de 10 bytes, que a aplicação solicite 20
+bytes dos dados recebidos a cada leitura, que os pacotes com números de
+sequência 0, 1 e 3 foram recebidos e ainda não tiveram seus dados (10
+bytes cada) entregues à aplicação. Como o pacote 3 chegou antes do 2 o
+receptor iniciou um temporizador para ele. Na primeira leitura os dados
+dos segmentos 0 e 1 são entregues a aplicação. Se a segunda leitura
+ocorrer antes do estouro do temporizador 0 bytes devem ser retornados.
+Caso a segunda leitura seja feita depois do estouro do temporizador do
+pacote 2 a aplicação deve ser avisada de que estão faltando dados e deve
+entregar os 10 bytes de dados do pacote 3. Caso o pacote 2 chegue antes
+de o temporizador estourar, os dados dos pacotes 2 e 3 serão entregues.
+
+O receptor DEVE assumir que os pacotes atrasados ou perdidos continham a
+maior quantidade de dados possível (MSS).
+
+O tempo a ser configurado no temporizador deve ser calculado de acordo
+com as seguintes regras:
+
+ - O tempo máximo é de 2 segundos
+ - No início do fluxo use o tempo máximo
+ - Depois use o menor entre:
+   - o tempo máximo
+   - 2 * (0,8 * Ta + 0,2 * Td) segundos, onde Ta é o tempo usado
+     anteriormente e Td é a diferença entre a hora de chegada do
+     penúltimo pacote DAT recebido para o antepenúltimo.
+ - Sempre que um segmento for perdido o tempo deve voltar ao máximo.
+
+Após ter enviado o último segmento do stream, ou caso envio precise ser
+cancelado, o transmissor deve enviar um pacote do tipo END_STREAM.
+
+4.3.1 Cancelamento de requisição
+------------------------------
+
+Caso o receptor deseje ele pode solicitar o cancelamento de envio de um
+fluxo que ele solicitou antes, o que é especialmente útil no caso em que
+o fluxo solicitado é infinito. Para isto o receptor DEVE enviar um
+pacote do tipo END_STREAM. Como descrito anteriormente, o transmissor
+responderá com um pacote END_STREAM.
+
+4.5 Encerramento de conexão
+---------------------------
+
+A conexão VSSP pode guardar variáveis, tanto do lado transmissor quanto
+do receptor, e seu encerramento faz com que os valores dessas variáveis
+sejam perdidos, portanto as conexões só devem ser encerradas caso o
+receptor não vá solicitar outro fluxo.
+
+Para encerrar a conexão tanto receptor como transmissor devem enviar um
+pacote do tipo END_CONNECTION, e devem responder com outro pacote do
+tipo END_CONNECTION.
